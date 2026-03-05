@@ -44,6 +44,42 @@
         color: #333333;
       }
 
+      .groups-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .groups-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .groups-actions button {
+        border: 0;
+        border-radius: 6px;
+        padding: 6px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        background: #e6e6e6;
+        color: #111111;
+        cursor: pointer;
+      }
+
+      .groups-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+      }
+
+      .group-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #333333;
+      }
+
       .hidden {
         display: none !important;
       }
@@ -232,6 +268,14 @@
       <label for="split-files">Separar tokens em arquivos por coleção/categoria</label>
     </div>
 
+    <div id="groups-panel" class="groups-panel hidden">
+      <div class="groups-actions">
+        <button id="groups-all" type="button">Selecionar todos</button>
+        <button id="groups-none" type="button">Desmarcar todos</button>
+      </div>
+      <div id="groups-list" class="groups-list"></div>
+    </div>
+
     <div id="single-view" class="editor">
       <div class="editor-actions">
         <button id="refresh" class="icon-btn" type="button" title="Atualizar" aria-label="Atualizar">
@@ -283,6 +327,8 @@
       const singleView = document.getElementById("single-view");
       const splitView = document.getElementById("split-view");
       const splitList = document.getElementById("split-list");
+      const groupsPanel = document.getElementById("groups-panel");
+      const groupsList = document.getElementById("groups-list");
 
       let lastPayload = null;
 
@@ -550,14 +596,20 @@
 
       function requestRefresh() {
         setStatus("Atualizando tokens...");
+        const options = {
+          includeCollectionOrCategoryRoot: includeRootInput.checked,
+          splitByCollectionOrCategory: splitFilesInput.checked,
+        };
+        const enabled = getEnabledGroups();
+        if (enabled !== null) {
+          options.enabledGroups = enabled;
+        }
+
         parent.postMessage(
           {
             pluginMessage: {
               type: "refresh-tokens",
-              options: {
-                includeCollectionOrCategoryRoot: includeRootInput.checked,
-                splitByCollectionOrCategory: splitFilesInput.checked,
-              },
+              options,
             },
           },
           "*"
@@ -568,6 +620,53 @@
         const split = splitFilesInput.checked;
         singleView.classList.toggle("hidden", split);
         splitView.classList.toggle("hidden", !split);
+      }
+
+      function getEnabledGroups() {
+        const inputs = groupsList.querySelectorAll('input[type=\"checkbox\"][data-group]');
+        if (!inputs.length) {
+          return null;
+        }
+
+        const enabled = [];
+        inputs.forEach((input) => {
+          if (input.checked) {
+            enabled.push(input.getAttribute("data-group"));
+          }
+        });
+        return enabled;
+      }
+
+      function updateGroupsPanel(availableGroups, selectedGroups) {
+        if (!availableGroups || availableGroups.length === 0) {
+          groupsPanel.classList.add("hidden");
+          groupsList.innerHTML = "";
+          return;
+        }
+
+        groupsPanel.classList.remove("hidden");
+        groupsList.innerHTML = "";
+        const selectedSet = new Set(selectedGroups || []);
+
+        availableGroups.forEach((groupName) => {
+          const label = document.createElement("label");
+          label.className = "group-item";
+
+          const input = document.createElement("input");
+          input.type = "checkbox";
+          input.checked = selectedSet.has(groupName);
+          input.setAttribute("data-group", groupName);
+          input.onchange = () => {
+            requestRefresh();
+          };
+
+          const text = document.createElement("span");
+          text.textContent = groupName;
+
+          label.appendChild(input);
+          label.appendChild(text);
+          groupsList.appendChild(label);
+        });
       }
 
       function makeIconButton(title, svgPath) {
@@ -664,6 +763,20 @@
         setStatus(`Download iniciado: tokens.zip (${lastPayload.files.length} arquivos).`);
       };
 
+      document.getElementById("groups-all").onclick = () => {
+        groupsList.querySelectorAll('input[type=\"checkbox\"][data-group]').forEach((input) => {
+          input.checked = true;
+        });
+        requestRefresh();
+      };
+
+      document.getElementById("groups-none").onclick = () => {
+        groupsList.querySelectorAll('input[type=\"checkbox\"][data-group]').forEach((input) => {
+          input.checked = false;
+        });
+        requestRefresh();
+      };
+
       includeRootInput.onchange = () => {
         requestRefresh();
       };
@@ -679,6 +792,7 @@
 
         if (message.type === "tokens-generated") {
           lastPayload = message.payload;
+          updateGroupsPanel(lastPayload.availableGroups || [], lastPayload.selectedGroups || []);
 
           if (lastPayload.mode === "single") {
             output.value = lastPayload.file.json || "";

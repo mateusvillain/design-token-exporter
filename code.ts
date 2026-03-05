@@ -15,6 +15,7 @@ type UiMessage =
       options?: {
         includeCollectionOrCategoryRoot?: boolean;
         splitByCollectionOrCategory?: boolean;
+        enabledGroups?: string[];
       };
     }
   | { type: "close-plugin" };
@@ -26,8 +27,18 @@ type TokenFile = {
 };
 
 type GeneratedPayload =
-  | { mode: "single"; file: TokenFile }
-  | { mode: "split"; files: TokenFile[] };
+  | {
+      mode: "single";
+      file: TokenFile;
+      availableGroups: string[];
+      selectedGroups: string[];
+    }
+  | {
+      mode: "split";
+      files: TokenFile[];
+      availableGroups: string[];
+      selectedGroups: string[];
+    };
 
 const DTCG_SCHEMA_URL =
   "https://www.designtokens.org/schemas/2025.10/format.json";
@@ -40,6 +51,7 @@ figma.showUI(__html__, {
 
 let includeCollectionOrCategoryRoot = true;
 let splitByCollectionOrCategory = false;
+let enabledGroups: string[] | null = null;
 
 function normalizeNameSegment(segment: string): string {
   const normalized = segment.trim().replace(/\s+/g, "-");
@@ -540,13 +552,16 @@ async function generateTokens(): Promise<GeneratedPayload> {
     buildStyleTokensByCategory(includeCollectionOrCategoryRoot),
   ]);
 
-  if (splitByCollectionOrCategory) {
-    const allGroups: Record<string, DtcgTree> = {};
-    mergeTreeGroupMap(variableGroups, allGroups);
-    mergeTreeGroupMap(styleGroups, allGroups);
+  const allGroups: Record<string, DtcgTree> = {};
+  mergeTreeGroupMap(variableGroups, allGroups);
+  mergeTreeGroupMap(styleGroups, allGroups);
+  const availableGroups = Object.keys(allGroups).sort();
+  const selectedGroupSet = new Set(enabledGroups === null ? availableGroups : enabledGroups);
+  const selectedGroups = availableGroups.filter((groupName) => selectedGroupSet.has(groupName));
 
+  if (splitByCollectionOrCategory) {
     const files: TokenFile[] = [];
-    for (const groupName of Object.keys(allGroups).sort()) {
+    for (const groupName of selectedGroups) {
       files.push({
         name: groupName,
         filename: `${toFileSafeName(groupName)}.tokens.json`,
@@ -557,15 +572,14 @@ async function generateTokens(): Promise<GeneratedPayload> {
     return {
       mode: "split",
       files,
+      availableGroups,
+      selectedGroups,
     };
   }
 
   let mergedTokens: DtcgTree = {};
-  for (const groupName of Object.keys(variableGroups)) {
-    mergedTokens = mergeDtcgTrees(mergedTokens, variableGroups[groupName]);
-  }
-  for (const groupName of Object.keys(styleGroups)) {
-    mergedTokens = mergeDtcgTrees(mergedTokens, styleGroups[groupName]);
+  for (const groupName of selectedGroups) {
+    mergedTokens = mergeDtcgTrees(mergedTokens, allGroups[groupName]);
   }
 
   return {
@@ -575,6 +589,8 @@ async function generateTokens(): Promise<GeneratedPayload> {
       filename: "tokens.json",
       json: JSON.stringify(createDtcgPayload(mergedTokens, generatedAt), null, 2),
     },
+    availableGroups,
+    selectedGroups,
   };
 }
 
@@ -599,6 +615,9 @@ figma.ui.onmessage = async (msg: UiMessage) => {
       msg.options?.includeCollectionOrCategoryRoot ?? includeCollectionOrCategoryRoot;
     splitByCollectionOrCategory =
       msg.options?.splitByCollectionOrCategory ?? splitByCollectionOrCategory;
+    if (msg.options && "enabledGroups" in msg.options) {
+      enabledGroups = msg.options.enabledGroups ?? null;
+    }
     await sendTokensToUi();
     return;
   }
