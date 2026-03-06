@@ -5,7 +5,17 @@
     <title>DTCG Token Exporter</title>
     <style>
       :root {
-        color-scheme: light dark;
+        --accent: #18a0fb;
+        --black: #000;
+        --black-80: rgba(0, 0, 0, 0.8);
+        --black-30: rgba(0, 0, 0, 0.3);
+        --gray: #f0f0f0;
+        --gray-soft: #f7f7f7;
+        --white: #fff;
+      }
+
+      * {
+        box-sizing: border-box;
       }
 
       html,
@@ -15,104 +25,204 @@
 
       body {
         margin: 0;
-        padding: 16px;
-        font: 12px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--white);
+        color: var(--black);
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        overflow: hidden;
+      }
+
+      .app {
         display: flex;
-        flex-direction: column;
-        gap: 12px;
         height: 100%;
-        min-height: 100%;
-        box-sizing: border-box;
-        overflow-y: auto;
-        overflow-x: hidden;
+        width: 100%;
       }
 
-      h1 {
-        margin: 0;
-        font-size: 14px;
-        line-height: 1.3;
-      }
-
-      .switch-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      }
-
-      .switch-row label {
-        font-size: 12px;
-        color: #333333;
-      }
-
-      .groups-panel {
+      .sidebar {
+        width: 200px;
+        border-right: 1px solid var(--gray);
         display: flex;
         flex-direction: column;
-        gap: 6px;
       }
 
-      .groups-actions {
-        display: flex;
-        gap: 8px;
+      .section {
+        padding: 8px;
       }
 
-      .groups-actions button {
-        border: 0;
-        border-radius: 6px;
-        padding: 6px 8px;
+      .section + .section {
+        border-top: 1px solid var(--gray);
+      }
+
+      .section-title {
         font-size: 11px;
-        font-weight: 600;
-        background: #e6e6e6;
-        color: #111111;
-        cursor: pointer;
+        line-height: 16px;
+        letter-spacing: 0.1px;
+        margin: 8px;
       }
 
-      .groups-list {
+      .toggle-row {
         display: flex;
-        flex-wrap: wrap;
-        gap: 8px 12px;
-      }
-
-      .group-item {
-        display: inline-flex;
         align-items: center;
-        gap: 6px;
-        font-size: 12px;
-        color: #333333;
+        min-height: 32px;
       }
 
-      .hidden {
-        display: none !important;
-      }
-
-      .editor {
+      .toggle {
         position: relative;
-        flex: 1;
-        min-height: 0;
-        height: 100%;
-        min-height: 360px;
-      }
-
-      .editor-actions {
-        position: absolute;
-        top: 8px;
-        right: 8px;
-        display: flex;
-        gap: 6px;
-        z-index: 2;
-      }
-
-      .icon-btn {
-        width: 32px;
+        width: 40px;
         height: 32px;
-        padding: 0;
-        border-radius: 6px;
-        background: #0d99ff;
-        color: #ffffff;
+        flex: 0 0 40px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        border: 0;
+      }
+
+      .toggle input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .toggle-ui {
+        width: 24px;
+        height: 12px;
+        border-radius: 9999px;
+        background: #b3b3b3;
+        position: relative;
+        transition: background 120ms ease;
+      }
+
+      .toggle-ui::after {
+        content: "";
+        position: absolute;
+        top: 1px;
+        left: 1px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #fff;
+        transition: left 120ms ease;
+      }
+
+      .toggle input:checked + .toggle-ui {
+        background: var(--accent);
+      }
+
+      .toggle input:checked + .toggle-ui::after {
+        left: 13px;
+      }
+
+      .toggle-label {
+        font-size: 11px;
+        line-height: 16px;
+        letter-spacing: 0.055px;
+        color: var(--black-80);
+        padding: 8px;
+        user-select: none;
         cursor: pointer;
+      }
+
+      .download-area {
+        padding: 16px;
+        border-top: 1px solid var(--gray);
+        border-bottom: 1px solid var(--gray);
+      }
+
+      .download-btn {
+        width: 100%;
+        height: 32px;
+        border: 0;
+        border-radius: 4px;
+        background: var(--accent);
+        color: var(--white);
+        font-size: 11px;
+        letter-spacing: 0.055px;
+        cursor: pointer;
+      }
+
+      .sidebar-footer {
+        margin-top: auto;
+        padding: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 9px;
+        line-height: 16px;
+        letter-spacing: 0.144px;
+        color: var(--black-80);
+      }
+
+      .sidebar-footer a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .sidebar-footer a:hover {
+        text-decoration: underline;
+      }
+
+      .main {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .single-main {
+        height: 100%;
+      }
+
+      .single-container {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+      }
+
+      .panel {
+        border: 1px solid var(--gray);
+        border-radius: 4px;
+        overflow: hidden;
+        background: var(--white);
+      }
+
+      .panel-header {
+        background: var(--gray-soft);
+        border-bottom: 1px solid var(--gray);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 4px 4px 4px 8px;
+        min-height: 28px;
+      }
+
+      .panel-title {
+        margin: 0;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 16px;
+        letter-spacing: 0.055px;
+      }
+
+      .actions {
+        display: flex;
+        gap: 4px;
+      }
+
+      .icon-btn {
+        width: 24px;
+        height: 24px;
+        border: 1px solid var(--gray);
+        background: var(--white);
+        border-radius: 4px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        cursor: pointer;
+      }
+
+      .icon-btn.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: var(--white);
       }
 
       .icon-btn svg {
@@ -125,29 +235,28 @@
         stroke-linejoin: round;
       }
 
+      .code-container {
+        position: relative;
+        height: calc(100% - 28px);
+      }
+
       .code-shell {
         display: flex;
-        width: 100%;
         height: 100%;
-        border: 1px solid #d2d2d2;
-        border-radius: 8px;
-        overflow: hidden;
-        background: #ffffff;
       }
 
       .line-numbers {
+        width: 29px;
+        flex: 0 0 29px;
         margin: 0;
-        width: 52px;
-        flex: 0 0 52px;
-        padding: 48px 8px 12px;
-        box-sizing: border-box;
-        border-right: 1px solid #e7e7e7;
-        background: #f8f8f8;
-        color: #888888;
+        padding: 8px 8px 40px;
         text-align: right;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-        font-size: 11px;
-        line-height: 1.4;
+        font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 10px;
+        line-height: 16px;
+        letter-spacing: 0.05px;
+        color: var(--black-30);
+        background: var(--white);
         overflow: hidden;
         user-select: none;
         white-space: pre;
@@ -155,189 +264,218 @@
 
       .code-area {
         width: 100%;
-        height: 100%;
+        border: 0;
+        margin: 0;
         resize: none;
-        border: 0;
-        padding: 48px 12px 12px;
-        box-sizing: border-box;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-        font-size: 11px;
-        line-height: 1.4;
-        background: transparent;
-        color: #101010;
         outline: 0;
+        background: var(--white);
+        color: var(--black-80);
+        padding: 8px 12px 40px 0;
+        font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 10px;
+        line-height: 16px;
+        letter-spacing: 0.05px;
       }
 
-      .split-view {
-        flex: 0 0 auto;
-        min-height: 0;
+      .code-footer {
+        position: absolute;
+        right: 8px;
+        bottom: 8px;
         display: flex;
+        gap: 4px;
+      }
+
+      .pill {
+        border: 1px solid var(--gray);
+        background: var(--white);
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 9px;
+        line-height: 16px;
+        letter-spacing: 0.144px;
+        color: var(--black-80);
+        white-space: nowrap;
+      }
+
+      .single-container .panel {
+        height: 100%;
+      }
+
+      .split-main {
+        display: none;
+        height: 100%;
+        overflow: auto;
+        padding: 8px 24px 8px 8px;
+        gap: 16px;
         flex-direction: column;
-        gap: 10px;
       }
 
-      .split-toolbar {
+      .split-main.active {
         display: flex;
-        gap: 8px;
       }
 
-      .text-btn {
-        border: 0;
-        border-radius: 6px;
-        padding: 8px 10px;
-        font-size: 12px;
-        font-weight: 600;
-        cursor: pointer;
-        background: #0d99ff;
-        color: #ffffff;
-      }
-
-      .split-list {
-        flex: 0 0 auto;
-        min-height: 0;
-        overflow: visible;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        padding-bottom: 12px;
+      .single-main.hidden {
+        display: none;
       }
 
       .split-card {
-        position: relative;
-        height: 320px;
+        height: 240px;
+        flex: 0 0 auto;
       }
 
-      .card-title {
-        position: absolute;
-        left: 12px;
-        top: 10px;
-        z-index: 2;
-        font-size: 12px;
-        font-weight: 600;
-        color: #333333;
-        background: rgba(255, 255, 255, 0.9);
-        border-radius: 4px;
-        padding: 2px 6px;
+      .split-card .code-container {
+        height: calc(100% - 28px);
       }
 
-      .split-card .code-shell {
-        height: 100%;
-      }
-
-      .split-card .line-numbers {
-        padding-top: 42px;
-      }
-
-      .split-card .code-area {
-        height: 100%;
-        padding-top: 42px;
-      }
-
-      .footer {
-        margin-top: auto;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-      }
-
-      #status {
-        margin: 0;
-        font-size: 11px;
-        color: #666666;
-      }
-
-      #stats {
-        margin: 0;
-        font-size: 11px;
-        color: #666666;
-        text-align: right;
+      .status-note {
+        display: none;
       }
     </style>
   </head>
   <body>
-    <h1>Exportar Design Tokens (DTCG 2025.10)</h1>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="section">
+          <div class="section-title">General</div>
 
-    <div class="switch-row">
-      <input id="include-root" type="checkbox" checked />
-      <label for="include-root">Incluir coleção/categoria no início do token</label>
+          <div class="toggle-row">
+            <label class="toggle" for="include-root">
+              <input id="include-root" type="checkbox" checked />
+              <span class="toggle-ui"></span>
+            </label>
+            <label class="toggle-label" for="include-root">Include collection</label>
+          </div>
+
+          <div class="toggle-row">
+            <label class="toggle" for="split-files">
+              <input id="split-files" type="checkbox" />
+              <span class="toggle-ui"></span>
+            </label>
+            <label class="toggle-label" for="split-files">Separate tokens</label>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">Collections</div>
+          <div id="groups-list"></div>
+        </div>
+
+        <div class="download-area">
+          <button id="sidebar-download" class="download-btn" type="button">Download file</button>
+        </div>
+
+        <div class="sidebar-footer">
+          <a id="github-link" href="https://github.com/mateusvillain/dtcg-tokens" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <span>v1.0.0</span>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div id="single-main" class="single-main">
+          <div class="single-container panel">
+            <div class="panel-header">
+              <p class="panel-title">tokens</p>
+              <div class="actions">
+                <button id="single-refresh" class="icon-btn" type="button" title="Atualizar" aria-label="Atualizar">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+                    <polyline points="21 3 21 9 15 9"></polyline>
+                  </svg>
+                </button>
+                <button id="single-download" class="icon-btn" type="button" title="Download" aria-label="Download">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                </button>
+                <button id="single-copy" class="icon-btn primary" type="button" title="Copiar" aria-label="Copiar">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                </button>
+              </div>
+            </div>
+            <div class="code-container">
+              <div class="code-shell">
+                <pre id="single-lines" class="line-numbers">1</pre>
+                <textarea id="single-code" class="code-area" readonly spellcheck="false"></textarea>
+              </div>
+              <div class="code-footer">
+                <div id="single-token-pill" class="pill">0 tokens</div>
+                <div id="single-line-pill" class="pill">0 lines</div>
+                <div id="single-size-pill" class="pill">0 B</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="split-main" class="split-main"></div>
+      </main>
     </div>
 
-    <div class="switch-row">
-      <input id="split-files" type="checkbox" />
-      <label for="split-files">Separar tokens em arquivos por coleção/categoria</label>
-    </div>
-
-    <div id="groups-panel" class="groups-panel hidden">
-      <div class="groups-actions">
-        <button id="groups-all" type="button">Selecionar todos</button>
-        <button id="groups-none" type="button">Desmarcar todos</button>
-      </div>
-      <div id="groups-list" class="groups-list"></div>
-    </div>
-
-    <div id="single-view" class="editor">
-      <div class="editor-actions">
-        <button id="refresh" class="icon-btn" type="button" title="Atualizar" aria-label="Atualizar">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
-            <polyline points="21 3 21 9 15 9" />
-          </svg>
-        </button>
-        <button id="copy" class="icon-btn" type="button" title="Copiar JSON" aria-label="Copiar JSON">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-          </svg>
-        </button>
-        <button id="download" class="icon-btn" type="button" title="Download tokens.json" aria-label="Download tokens.json">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-        </button>
-      </div>
-      <div class="code-shell">
-        <pre id="single-lines" class="line-numbers">1</pre>
-        <textarea id="json-output" class="code-area" spellcheck="false" readonly></textarea>
-      </div>
-    </div>
-
-    <div id="split-view" class="split-view hidden">
-      <div class="split-toolbar">
-        <button id="refresh-all" class="text-btn" type="button">Atualizar tudo</button>
-        <button id="download-all" class="text-btn" type="button">Baixar tudo</button>
-      </div>
-      <div id="split-list" class="split-list"></div>
-    </div>
-
-    <div class="footer">
-      <p id="status">Gerando tokens...</p>
-      <p id="stats">Tokens: 0 | Linhas: 0 | Tamanho: 0 B</p>
-    </div>
+    <p id="status-note" class="status-note"></p>
 
     <script>
-      const output = document.getElementById("json-output");
-      const singleLines = document.getElementById("single-lines");
-      const status = document.getElementById("status");
-      const stats = document.getElementById("stats");
       const includeRootInput = document.getElementById("include-root");
       const splitFilesInput = document.getElementById("split-files");
-      const singleView = document.getElementById("single-view");
-      const splitView = document.getElementById("split-view");
-      const splitList = document.getElementById("split-list");
-      const groupsPanel = document.getElementById("groups-panel");
       const groupsList = document.getElementById("groups-list");
+      const sidebarDownload = document.getElementById("sidebar-download");
+
+      const singleMain = document.getElementById("single-main");
+      const splitMain = document.getElementById("split-main");
+      const singleLines = document.getElementById("single-lines");
+      const singleCode = document.getElementById("single-code");
+      const singleTokenPill = document.getElementById("single-token-pill");
+      const singleLinePill = document.getElementById("single-line-pill");
+      const singleSizePill = document.getElementById("single-size-pill");
 
       let lastPayload = null;
 
       function setStatus(message) {
-        status.textContent = message;
+        const node = document.getElementById("status-note");
+        node.textContent = message;
       }
 
-      function setStats(message) {
-        stats.textContent = message;
+      function getEnabledGroups() {
+        const items = groupsList.querySelectorAll('input[type="checkbox"][data-group]');
+        if (!items.length) return null;
+
+        const selected = [];
+        items.forEach((item) => {
+          if (item.checked) {
+            selected.push(item.getAttribute("data-group"));
+          }
+        });
+        return selected;
+      }
+
+      function requestRefresh() {
+        const options = {
+          includeCollectionOrCategoryRoot: includeRootInput.checked,
+          splitByCollectionOrCategory: splitFilesInput.checked,
+        };
+
+        const enabledGroups = getEnabledGroups();
+        if (enabledGroups !== null) {
+          options.enabledGroups = enabledGroups;
+        }
+
+        parent.postMessage({ pluginMessage: { type: "refresh-tokens", options } }, "*");
+      }
+
+      function updateMainMode() {
+        const splitMode = splitFilesInput.checked;
+        if (splitMode) {
+          singleMain.classList.add("hidden");
+          splitMain.classList.add("active");
+          sidebarDownload.textContent = "Download files";
+        } else {
+          singleMain.classList.remove("hidden");
+          splitMain.classList.remove("active");
+          sidebarDownload.textContent = "Download file";
+        }
       }
 
       function lineCount(text) {
@@ -366,23 +504,23 @@
       function jsonTokenCount(jsonText) {
         try {
           const parsed = JSON.parse(jsonText);
-          let total = 0;
           const stack = [parsed];
+          let total = 0;
 
           while (stack.length > 0) {
             const current = stack.pop();
             if (!current || typeof current !== "object") continue;
 
-            if (!Array.isArray(current)) {
-              if (Object.prototype.hasOwnProperty.call(current, "$value")) {
-                total += 1;
-              }
-              Object.keys(current).forEach((key) => {
-                stack.push(current[key]);
-              });
-            } else {
+            if (Array.isArray(current)) {
               current.forEach((item) => stack.push(item));
+              continue;
             }
+
+            if (Object.prototype.hasOwnProperty.call(current, "$value")) {
+              total += 1;
+            }
+
+            Object.keys(current).forEach((key) => stack.push(current[key]));
           }
 
           return total;
@@ -401,40 +539,22 @@
         return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
       }
 
-      function updateStatsForSingle(jsonText) {
-        const tokens = jsonTokenCount(jsonText);
-        const lines = lineCount(jsonText);
-        const size = formatBytes(bytesOfText(jsonText));
-        setStats(`Tokens: ${tokens} | Linhas: ${lines} | Tamanho: ${size}`);
+      function getStats(json) {
+        return {
+          tokens: jsonTokenCount(json),
+          lines: lineCount(json),
+          size: formatBytes(bytesOfText(json)),
+        };
       }
 
-      function updateStatsForSplit(files) {
-        let tokens = 0;
-        let lines = 0;
-        let bytes = 0;
-
-        files.forEach((file) => {
-          tokens += jsonTokenCount(file.json);
-          lines += lineCount(file.json);
-          bytes += bytesOfText(file.json);
-        });
-
-        setStats(`Tokens: ${tokens} | Linhas: ${lines} | Tamanho: ${formatBytes(bytes)}`);
+      function fillPills(tokenNode, lineNode, sizeNode, stats) {
+        tokenNode.textContent = `${stats.tokens} tokens`;
+        lineNode.textContent = `${stats.lines} lines`;
+        sizeNode.textContent = `${stats.size}`;
       }
 
-      function triggerDownload(json, filename) {
-        const blob = new Blob([json], { type: "application/json;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = filename;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        URL.revokeObjectURL(url);
-      }
-
-      function triggerBlobDownload(blob, filename) {
+      function triggerDownload(content, filename, mime = "application/json;charset=utf-8") {
+        const blob = new Blob([content], { type: mime });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
@@ -474,10 +594,10 @@
         const hours = date.getHours();
         const minutes = date.getMinutes();
         const seconds = Math.floor(date.getSeconds() / 2);
-
-        const dosTime = (hours << 11) | (minutes << 5) | seconds;
-        const dosDate = ((year - 1980) << 9) | (month << 5) | day;
-        return { dosTime, dosDate };
+        return {
+          dosTime: (hours << 11) | (minutes << 5) | seconds,
+          dosDate: ((year - 1980) << 9) | (month << 5) | day,
+        };
       }
 
       function u16le(value) {
@@ -563,22 +683,20 @@
           offset += localRecord.length;
         });
 
-        const centralDirectory = concatUint8Arrays(centralParts);
         const localSection = concatUint8Arrays(localParts);
-
-        const endOfCentralDirectory = concatUint8Arrays([
+        const centralDir = concatUint8Arrays(centralParts);
+        const eocd = concatUint8Arrays([
           u32le(0x06054b50),
           u16le(0),
           u16le(0),
           u16le(files.length),
           u16le(files.length),
-          u32le(centralDirectory.length),
+          u32le(centralDir.length),
           u32le(localSection.length),
           u16le(0),
         ]);
 
-        const zipBytes = concatUint8Arrays([localSection, centralDirectory, endOfCentralDirectory]);
-        return new Blob([zipBytes], { type: "application/zip" });
+        return new Blob([concatUint8Arrays([localSection, centralDir, eocd])], { type: "application/zip" });
       }
 
       async function copyText(text) {
@@ -594,125 +712,97 @@
         }
       }
 
-      function requestRefresh() {
-        setStatus("Atualizando tokens...");
-        const options = {
-          includeCollectionOrCategoryRoot: includeRootInput.checked,
-          splitByCollectionOrCategory: splitFilesInput.checked,
-        };
-        const enabled = getEnabledGroups();
-        if (enabled !== null) {
-          options.enabledGroups = enabled;
-        }
-
-        parent.postMessage(
-          {
-            pluginMessage: {
-              type: "refresh-tokens",
-              options,
-            },
-          },
-          "*"
-        );
-      }
-
-      function updateViewMode() {
-        const split = splitFilesInput.checked;
-        singleView.classList.toggle("hidden", split);
-        splitView.classList.toggle("hidden", !split);
-      }
-
-      function getEnabledGroups() {
-        const inputs = groupsList.querySelectorAll('input[type=\"checkbox\"][data-group]');
-        if (!inputs.length) {
-          return null;
-        }
-
-        const enabled = [];
-        inputs.forEach((input) => {
-          if (input.checked) {
-            enabled.push(input.getAttribute("data-group"));
-          }
-        });
-        return enabled;
-      }
-
       function updateGroupsPanel(availableGroups, selectedGroups) {
-        if (!availableGroups || availableGroups.length === 0) {
-          groupsPanel.classList.add("hidden");
-          groupsList.innerHTML = "";
-          return;
-        }
-
-        groupsPanel.classList.remove("hidden");
         groupsList.innerHTML = "";
-        const selectedSet = new Set(selectedGroups || []);
+        const set = new Set(selectedGroups || []);
 
-        availableGroups.forEach((groupName) => {
-          const label = document.createElement("label");
-          label.className = "group-item";
+        availableGroups.forEach((group) => {
+          const row = document.createElement("div");
+          row.className = "toggle-row";
+
+          const labelToggle = document.createElement("label");
+          labelToggle.className = "toggle";
 
           const input = document.createElement("input");
           input.type = "checkbox";
-          input.checked = selectedSet.has(groupName);
-          input.setAttribute("data-group", groupName);
-          input.onchange = () => {
+          input.checked = set.has(group);
+          input.setAttribute("data-group", group);
+          input.onchange = () => requestRefresh();
+
+          const ui = document.createElement("span");
+          ui.className = "toggle-ui";
+
+          labelToggle.appendChild(input);
+          labelToggle.appendChild(ui);
+
+          const text = document.createElement("label");
+          text.className = "toggle-label";
+          text.textContent = group;
+          text.onclick = () => {
+            input.checked = !input.checked;
             requestRefresh();
           };
 
-          const text = document.createElement("span");
-          text.textContent = groupName;
-
-          label.appendChild(input);
-          label.appendChild(text);
-          groupsList.appendChild(label);
+          row.appendChild(labelToggle);
+          row.appendChild(text);
+          groupsList.appendChild(row);
         });
       }
 
-      function makeIconButton(title, svgPath) {
-        const btn = document.createElement("button");
-        btn.className = "icon-btn";
-        btn.type = "button";
-        btn.title = title;
-        btn.setAttribute("aria-label", title);
-        btn.innerHTML = svgPath;
-        return btn;
+      function createActionIcon(type) {
+        if (type === "refresh") {
+          return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"></path><polyline points="21 3 21 9 15 9"></polyline></svg>';
+        }
+        if (type === "download") {
+          return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>';
+        }
+        return '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
       }
 
       function renderSplit(files) {
-        splitList.innerHTML = "";
+        splitMain.innerHTML = "";
 
         files.forEach((file) => {
           const card = document.createElement("div");
-          card.className = "split-card";
+          card.className = "panel split-card";
 
-          const title = document.createElement("div");
-          title.className = "card-title";
+          const header = document.createElement("div");
+          header.className = "panel-header";
+
+          const title = document.createElement("p");
+          title.className = "panel-title";
           title.textContent = file.name;
 
           const actions = document.createElement("div");
-          actions.className = "editor-actions";
+          actions.className = "actions";
 
-          const copyBtn = makeIconButton(
-            "Copiar",
-            '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>'
-          );
-          copyBtn.onclick = async () => {
-            await copyText(file.json);
-            setStatus(`JSON copiado: ${file.filename}`);
-          };
+          const refreshBtn = document.createElement("button");
+          refreshBtn.className = "icon-btn";
+          refreshBtn.type = "button";
+          refreshBtn.innerHTML = createActionIcon("refresh");
+          refreshBtn.onclick = () => requestRefresh();
 
-          const downloadBtn = makeIconButton(
-            "Download",
-            '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>'
-          );
-          downloadBtn.onclick = () => {
-            triggerDownload(file.json, file.filename);
-            setStatus(`Download iniciado: ${file.filename}`);
-          };
+          const downloadBtn = document.createElement("button");
+          downloadBtn.className = "icon-btn";
+          downloadBtn.type = "button";
+          downloadBtn.innerHTML = createActionIcon("download");
+          downloadBtn.onclick = () => triggerDownload(file.json, file.filename);
 
-          actions.appendChild(copyBtn);
+          const copyBtn = document.createElement("button");
+          copyBtn.className = "icon-btn primary";
+          copyBtn.type = "button";
+          copyBtn.innerHTML = createActionIcon("copy");
+          copyBtn.onclick = () => copyText(file.json);
+
+          actions.appendChild(refreshBtn);
           actions.appendChild(downloadBtn);
+          actions.appendChild(copyBtn);
+
+          header.appendChild(title);
+          header.appendChild(actions);
+
+          const container = document.createElement("div");
+          container.className = "code-container";
 
           const shell = document.createElement("div");
           shell.className = "code-shell";
@@ -720,107 +810,94 @@
           const lines = document.createElement("pre");
           lines.className = "line-numbers";
 
-          const textarea = document.createElement("textarea");
-          textarea.className = "code-area";
-          textarea.readOnly = true;
-          textarea.spellcheck = false;
-          textarea.value = file.json;
-          updateLineNumbers(lines, textarea.value);
-          syncLineNumbersScroll(textarea, lines);
+          const text = document.createElement("textarea");
+          text.className = "code-area";
+          text.readOnly = true;
+          text.spellcheck = false;
+          text.value = file.json;
 
-          card.appendChild(title);
-          card.appendChild(actions);
+          updateLineNumbers(lines, text.value);
+          syncLineNumbersScroll(text, lines);
+
           shell.appendChild(lines);
-          shell.appendChild(textarea);
-          card.appendChild(shell);
-          splitList.appendChild(card);
+          shell.appendChild(text);
+
+          const footer = document.createElement("div");
+          footer.className = "code-footer";
+          const tokenPill = document.createElement("div");
+          tokenPill.className = "pill";
+          const linePill = document.createElement("div");
+          linePill.className = "pill";
+          const sizePill = document.createElement("div");
+          sizePill.className = "pill";
+          const stats = getStats(file.json);
+          fillPills(tokenPill, linePill, sizePill, stats);
+          footer.appendChild(tokenPill);
+          footer.appendChild(linePill);
+          footer.appendChild(sizePill);
+
+          container.appendChild(shell);
+          container.appendChild(footer);
+
+          card.appendChild(header);
+          card.appendChild(container);
+          splitMain.appendChild(card);
         });
       }
 
-      document.getElementById("refresh").onclick = () => {
-        requestRefresh();
+      document.getElementById("single-refresh").onclick = () => requestRefresh();
+      document.getElementById("single-copy").onclick = () => copyText(singleCode.value);
+      document.getElementById("single-download").onclick = () => {
+        if (!lastPayload || lastPayload.mode !== "single") return;
+        triggerDownload(lastPayload.file.json, lastPayload.file.filename);
       };
 
-      document.getElementById("copy").onclick = async () => {
-        await copyText(output.value);
-        setStatus("JSON copiado.");
-      };
-
-      document.getElementById("download").onclick = () => {
-        const filename = lastPayload && lastPayload.mode === "single" ? lastPayload.file.filename : "tokens.json";
-        triggerDownload(output.value, filename);
-        setStatus(`Download iniciado: ${filename}`);
-      };
-
-      document.getElementById("refresh-all").onclick = () => {
-        requestRefresh();
-      };
-
-      document.getElementById("download-all").onclick = () => {
-        if (!lastPayload || lastPayload.mode !== "split") return;
-        const zipBlob = buildZip(lastPayload.files);
-        triggerBlobDownload(zipBlob, "tokens.zip");
-        setStatus(`Download iniciado: tokens.zip (${lastPayload.files.length} arquivos).`);
-      };
-
-      document.getElementById("groups-all").onclick = () => {
-        groupsList.querySelectorAll('input[type=\"checkbox\"][data-group]').forEach((input) => {
-          input.checked = true;
-        });
-        requestRefresh();
-      };
-
-      document.getElementById("groups-none").onclick = () => {
-        groupsList.querySelectorAll('input[type=\"checkbox\"][data-group]').forEach((input) => {
-          input.checked = false;
-        });
-        requestRefresh();
-      };
-
-      includeRootInput.onchange = () => {
-        requestRefresh();
-      };
-
+      includeRootInput.onchange = () => requestRefresh();
       splitFilesInput.onchange = () => {
-        updateViewMode();
+        updateMainMode();
         requestRefresh();
+      };
+
+      sidebarDownload.onclick = () => {
+        if (!lastPayload) return;
+        if (lastPayload.mode === "single") {
+          triggerDownload(lastPayload.file.json, lastPayload.file.filename);
+          return;
+        }
+        const zip = buildZip(lastPayload.files || []);
+        triggerDownload(zip, "tokens.zip", "application/zip");
       };
 
       onmessage = (event) => {
         const message = event.data.pluginMessage;
         if (!message || typeof message !== "object") return;
 
+        if (message.type === "tokens-error") {
+          setStatus("Erro ao gerar tokens");
+          return;
+        }
+
         if (message.type === "tokens-generated") {
           lastPayload = message.payload;
           updateGroupsPanel(lastPayload.availableGroups || [], lastPayload.selectedGroups || []);
 
           if (lastPayload.mode === "single") {
-            output.value = lastPayload.file.json || "";
-            updateLineNumbers(singleLines, output.value);
-            updateStatsForSingle(output.value);
-            updateViewMode();
-            setStatus("Tokens gerados com sucesso.");
+            singleCode.value = lastPayload.file.json || "";
+            updateLineNumbers(singleLines, singleCode.value);
+            const stats = getStats(singleCode.value);
+            fillPills(singleTokenPill, singleLinePill, singleSizePill, stats);
+            updateMainMode();
             return;
           }
 
-          if (lastPayload.mode === "split") {
-            renderSplit(lastPayload.files || []);
-            updateStatsForSplit(lastPayload.files || []);
-            updateViewMode();
-            setStatus(`Tokens gerados com sucesso em ${lastPayload.files.length} arquivos.`);
-            return;
-          }
-        }
-
-        if (message.type === "tokens-error") {
-          setStatus("Erro ao gerar tokens: " + (message.error || "desconhecido"));
-          setStats("Tokens: 0 | Linhas: 0 | Tamanho: 0 B");
-          return;
+          renderSplit(lastPayload.files || []);
+          updateMainMode();
         }
       };
 
-      syncLineNumbersScroll(output, singleLines);
-      updateViewMode();
+      syncLineNumbersScroll(singleCode, singleLines);
+      updateMainMode();
+      requestRefresh();
     </script>
   </body>
 </html>
