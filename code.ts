@@ -300,7 +300,20 @@ function firstVisiblePaint(paints: ReadonlyArray<Paint>): Paint | null {
   return paints.find((paint) => paint.visible !== false) ?? paints[0] ?? null;
 }
 
-function convertPaintToToken(style: PaintStyle): DtcgToken {
+type VariablePathIndex = Record<string, string>;
+
+function aliasToReference(
+  alias: VariableAlias | undefined,
+  variablePaths: VariablePathIndex
+): string | null {
+  if (!alias) return null;
+
+  const path = variablePaths[alias.id];
+  // Library variables are not in the local index; fall back to the raw value.
+  return path ? valueToReference(path) : null;
+}
+
+function convertPaintToToken(style: PaintStyle, variablePaths: VariablePathIndex): DtcgToken {
   const paint = firstVisiblePaint(style.paints);
   if (!paint) {
     return {
@@ -313,7 +326,9 @@ function convertPaintToToken(style: PaintStyle): DtcgToken {
   if (paint.type === "SOLID") {
     return {
       $type: "color",
-      $value: colorToDtcgColor(paint.color, paint.opacity ?? 1),
+      $value:
+        aliasToReference(paint.boundVariables?.color, variablePaths) ??
+        colorToDtcgColor(paint.color, paint.opacity ?? 1),
       $description: style.description || undefined,
     };
   }
@@ -327,7 +342,9 @@ function convertPaintToToken(style: PaintStyle): DtcgToken {
     return {
       $type: "gradient",
       $value: paint.gradientStops.map((stop: ColorStop) => ({
-        color: colorToDtcgColor(stop.color, stop.color.a),
+        color:
+          aliasToReference(stop.boundVariables?.color, variablePaths) ??
+          colorToDtcgColor(stop.color, stop.color.a),
         position: Number(stop.position.toFixed(4)),
       })),
       $description: style.description || undefined,
@@ -347,8 +364,6 @@ function convertPaintToToken(style: PaintStyle): DtcgToken {
   };
 }
 
-type VariablePathIndex = Record<string, string>;
-
 function boundVariableReference(
   style: TextStyle,
   field: VariableBindableTextField,
@@ -357,12 +372,7 @@ function boundVariableReference(
   const boundVariables = style.boundVariables as
     | { [key in VariableBindableTextField]?: VariableAlias }
     | undefined;
-  const alias = boundVariables?.[field];
-  if (!alias) return null;
-
-  const path = variablePaths[alias.id];
-  // Library variables are not in the local index; fall back to the raw value.
-  return path ? valueToReference(path) : null;
+  return aliasToReference(boundVariables?.[field], variablePaths);
 }
 
 function convertTextToToken(style: TextStyle, variablePaths: VariablePathIndex): DtcgToken {
@@ -564,7 +574,11 @@ async function buildStyleTokensByCategory(
   ]);
 
   for (const style of paintStyles) {
-    setToken(styleGroups.color, styleTokenPath("color", style.name, includeRoot), convertPaintToToken(style));
+    setToken(
+      styleGroups.color,
+      styleTokenPath("color", style.name, includeRoot),
+      convertPaintToToken(style, variablePaths)
+    );
   }
 
   for (const style of textStyles) {
