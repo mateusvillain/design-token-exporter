@@ -176,10 +176,6 @@ function colorToModeExtension(color: RGB, alpha = 1): {
   };
 }
 
-function numberToPx(value: number): string {
-  return `${Number(value.toFixed(4))}px`;
-}
-
 function numberWithUnit(value: number, unit: string): { value: number; unit: string } {
   return {
     value: round4(value),
@@ -248,11 +244,52 @@ function convertVariableValue(
   return value;
 }
 
-function textLineHeightToDtcg(lineHeight: LineHeight): string | number {
-  if (lineHeight.unit === "AUTO") return "normal";
-  if (lineHeight.unit === "PIXELS") return numberToPx(lineHeight.value);
-  if (lineHeight.unit === "PERCENT") return round4(lineHeight.value / 100);
+// DTCG lineHeight is a unitless multiplier of fontSize, so pixel line heights
+// are divided by the font size and Figma's AUTO has no numeric equivalent.
+const AUTO_LINE_HEIGHT = 1;
+
+function textLineHeightToDtcg(lineHeight: LineHeight, fontSize: number): number {
+  if (lineHeight.unit === "AUTO") return AUTO_LINE_HEIGHT;
+  if (lineHeight.unit === "PIXELS") {
+    return fontSize > 0 ? round4(lineHeight.value / fontSize) : AUTO_LINE_HEIGHT;
+  }
   return round4(lineHeight.value / 100);
+}
+
+const FONT_WEIGHT_BY_NAME: Record<string, number> = {
+  thin: 100,
+  hairline: 100,
+  extralight: 200,
+  ultralight: 200,
+  light: 300,
+  normal: 400,
+  regular: 400,
+  book: 400,
+  medium: 500,
+  semibold: 600,
+  demibold: 600,
+  bold: 700,
+  extrabold: 800,
+  ultrabold: 800,
+  black: 900,
+  heavy: 900,
+  extrablack: 950,
+  ultrablack: 950,
+};
+
+// Figma font styles ("Bold", "SemiBold Italic") map onto DTCG numeric weights.
+// Italic is a separate axis with no DTCG typography sub-value, so it is dropped.
+function fontStyleToDtcgWeight(fontStyle: string): number | string {
+  const normalized = fontStyle
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "")
+    .replace(/italic|oblique/g, "");
+
+  if (normalized === "") return FONT_WEIGHT_BY_NAME.regular;
+
+  const weight = FONT_WEIGHT_BY_NAME[normalized];
+  // Unmapped styles (e.g. "Condensed") keep a readable name rather than a wrong number.
+  return weight === undefined ? toKebabLower(fontStyle) : weight;
 }
 
 function textLetterSpacingToDtcg(
@@ -271,20 +308,6 @@ function textLetterSpacingToDtcg(
     value: round4(pxValue),
     unit: "px",
   };
-}
-
-function mapTextCase(textCase: TextCase): string {
-  if (textCase === "UPPER") return "uppercase";
-  if (textCase === "LOWER") return "lowercase";
-  if (textCase === "TITLE") return "capitalize";
-  if (textCase === "SMALL_CAPS" || textCase === "SMALL_CAPS_FORCED") return "small-caps";
-  return "none";
-}
-
-function mapTextDecoration(textDecoration: TextDecoration): string {
-  if (textDecoration === "UNDERLINE") return "underline";
-  if (textDecoration === "STRIKETHROUGH") return "line-through";
-  return "none";
 }
 
 function toKebabLower(text: string): string {
@@ -380,20 +403,19 @@ function convertTextToToken(style: TextStyle, variablePaths: VariablePathIndex):
   const ref = (field: VariableBindableTextField) =>
     boundVariableReference(style, field, variablePaths);
 
+  // DTCG typography allows exactly these five sub-values, all required.
   return {
     $type: "typography",
     $value: {
       fontFamily: ref("fontFamily") ?? fontName?.family ?? "Unknown",
-      fontWeight:
-        ref("fontWeight") ?? ref("fontStyle") ?? toKebabLower(fontName?.style ?? "regular"),
       fontSize: ref("fontSize") ?? numberWithUnit(style.fontSize, "px"),
-      lineHeight: ref("lineHeight") ?? textLineHeightToDtcg(style.lineHeight),
+      fontWeight:
+        ref("fontWeight") ??
+        ref("fontStyle") ??
+        fontStyleToDtcgWeight(fontName?.style ?? "regular"),
       letterSpacing:
         ref("letterSpacing") ?? textLetterSpacingToDtcg(style.letterSpacing, style.fontSize),
-      paragraphSpacing: ref("paragraphSpacing") ?? numberToPx(style.paragraphSpacing),
-      paragraphIndent: ref("paragraphIndent") ?? numberToPx(style.paragraphIndent),
-      textCase: mapTextCase(style.textCase),
-      textDecoration: mapTextDecoration(style.textDecoration),
+      lineHeight: ref("lineHeight") ?? textLineHeightToDtcg(style.lineHeight, style.fontSize),
     },
     $description: style.description || undefined,
   };
