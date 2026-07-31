@@ -287,8 +287,11 @@ function fontStyleToDtcgWeight(fontStyle: string): number {
     .replace(/[\s_-]+/g, "")
     .replace(/italic|oblique/g, "");
 
+  // Own-property check keeps inherited keys ("constructor") from leaking through.
   // Unmapped styles (e.g. "Condensed") fall back to regular so the value stays numeric.
-  return FONT_WEIGHT_BY_NAME[normalized] ?? DEFAULT_FONT_WEIGHT;
+  return Object.prototype.hasOwnProperty.call(FONT_WEIGHT_BY_NAME, normalized)
+    ? FONT_WEIGHT_BY_NAME[normalized]
+    : DEFAULT_FONT_WEIGHT;
 }
 
 function textLetterSpacingToDtcg(
