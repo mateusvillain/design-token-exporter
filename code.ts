@@ -245,8 +245,10 @@ function convertVariableValue(
 }
 
 // DTCG lineHeight is a unitless multiplier of fontSize, so pixel line heights
-// are divided by the font size and Figma's AUTO has no numeric equivalent.
-const AUTO_LINE_HEIGHT = 1;
+// are divided by the font size. Figma's AUTO has no numeric equivalent, so it
+// approximates the typical default of most fonts.
+const AUTO_LINE_HEIGHT = 1.2;
+const DEFAULT_FONT_WEIGHT = 400;
 
 function textLineHeightToDtcg(lineHeight: LineHeight, fontSize: number): number {
   if (lineHeight.unit === "AUTO") return AUTO_LINE_HEIGHT;
@@ -279,17 +281,14 @@ const FONT_WEIGHT_BY_NAME: Record<string, number> = {
 
 // Figma font styles ("Bold", "SemiBold Italic") map onto DTCG numeric weights.
 // Italic is a separate axis with no DTCG typography sub-value, so it is dropped.
-function fontStyleToDtcgWeight(fontStyle: string): number | string {
+function fontStyleToDtcgWeight(fontStyle: string): number {
   const normalized = fontStyle
     .toLowerCase()
     .replace(/[\s_-]+/g, "")
     .replace(/italic|oblique/g, "");
 
-  if (normalized === "") return FONT_WEIGHT_BY_NAME.regular;
-
-  const weight = FONT_WEIGHT_BY_NAME[normalized];
-  // Unmapped styles (e.g. "Condensed") keep a readable name rather than a wrong number.
-  return weight === undefined ? toKebabLower(fontStyle) : weight;
+  // Unmapped styles (e.g. "Condensed") fall back to regular so the value stays numeric.
+  return FONT_WEIGHT_BY_NAME[normalized] ?? DEFAULT_FONT_WEIGHT;
 }
 
 function textLetterSpacingToDtcg(
@@ -308,15 +307,6 @@ function textLetterSpacingToDtcg(
     value: round4(pxValue),
     unit: "px",
   };
-}
-
-function toKebabLower(text: string): string {
-  return text
-    .trim()
-    .replace(/[_\s]+/g, "-")
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .replace(/-+/g, "-")
-    .toLowerCase();
 }
 
 function firstVisiblePaint(paints: ReadonlyArray<Paint>): Paint | null {
