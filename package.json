@@ -1,6 +1,6 @@
 {
   "name": "design-token-exporter",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Transform your Figma variables and styles into multi-theme and multi-brand design tokens in compliance with the Design Tokens Community Group (DTCG) standards.",
   "main": "code.js",
   "scripts": {
