@@ -347,18 +347,41 @@ function convertPaintToToken(style: PaintStyle): DtcgToken {
   };
 }
 
-function convertTextToToken(style: TextStyle): DtcgToken {
+type VariablePathIndex = Record<string, string>;
+
+function boundVariableReference(
+  style: TextStyle,
+  field: VariableBindableTextField,
+  variablePaths: VariablePathIndex
+): string | null {
+  const boundVariables = style.boundVariables as
+    | { [key in VariableBindableTextField]?: VariableAlias }
+    | undefined;
+  const alias = boundVariables?.[field];
+  if (!alias) return null;
+
+  const path = variablePaths[alias.id];
+  // Library variables are not in the local index; fall back to the raw value.
+  return path ? valueToReference(path) : null;
+}
+
+function convertTextToToken(style: TextStyle, variablePaths: VariablePathIndex): DtcgToken {
   const fontName = typeof style.fontName === "symbol" ? null : style.fontName;
+  const ref = (field: VariableBindableTextField) =>
+    boundVariableReference(style, field, variablePaths);
+
   return {
     $type: "typography",
     $value: {
-      fontFamily: fontName?.family ?? "Unknown",
-      fontWeight: toKebabLower(fontName?.style ?? "regular"),
-      fontSize: numberWithUnit(style.fontSize, "px"),
-      lineHeight: textLineHeightToDtcg(style.lineHeight),
-      letterSpacing: textLetterSpacingToDtcg(style.letterSpacing, style.fontSize),
-      paragraphSpacing: numberToPx(style.paragraphSpacing),
-      paragraphIndent: numberToPx(style.paragraphIndent),
+      fontFamily: ref("fontFamily") ?? fontName?.family ?? "Unknown",
+      fontWeight:
+        ref("fontWeight") ?? ref("fontStyle") ?? toKebabLower(fontName?.style ?? "regular"),
+      fontSize: ref("fontSize") ?? numberWithUnit(style.fontSize, "px"),
+      lineHeight: ref("lineHeight") ?? textLineHeightToDtcg(style.lineHeight),
+      letterSpacing:
+        ref("letterSpacing") ?? textLetterSpacingToDtcg(style.letterSpacing, style.fontSize),
+      paragraphSpacing: ref("paragraphSpacing") ?? numberToPx(style.paragraphSpacing),
+      paragraphIndent: ref("paragraphIndent") ?? numberToPx(style.paragraphIndent),
       textCase: mapTextCase(style.textCase),
       textDecoration: mapTextDecoration(style.textDecoration),
     },
@@ -422,9 +445,8 @@ function styleTokenPath(category: string, styleName: string, includeRoot: boolea
   return includeRoot ? `${category}/${styleName}` : styleName;
 }
 
-async function buildVariableTokensByCollection(includeRoot: boolean): Promise<Record<string, DtcgTree>> {
-  const variableGroups: Record<string, DtcgTree> = {};
-  const pathByVariableId: Record<string, string> = {};
+async function buildVariablePathIndex(includeRoot: boolean): Promise<VariablePathIndex> {
+  const pathByVariableId: VariablePathIndex = {};
 
   const collections = await getLocalCollections();
   for (const collection of collections) {
@@ -432,11 +454,24 @@ async function buildVariableTokensByCollection(includeRoot: boolean): Promise<Re
       const variable = await getVariableById(variableId);
       if (!variable) continue;
 
-      const tokenPath = variableTokenPath(collection.name, variable.name, includeRoot);
-      pathByVariableId[variable.id] = tokenPath;
+      pathByVariableId[variable.id] = variableTokenPath(
+        collection.name,
+        variable.name,
+        includeRoot
+      );
     }
   }
 
+  return pathByVariableId;
+}
+
+async function buildVariableTokensByCollection(
+  includeRoot: boolean,
+  pathByVariableId: VariablePathIndex
+): Promise<Record<string, DtcgTree>> {
+  const variableGroups: Record<string, DtcgTree> = {};
+
+  const collections = await getLocalCollections();
   for (const collection of collections) {
     variableGroups[collection.name] = variableGroups[collection.name] ?? {};
     const modeById = new Map(collection.modes.map((mode) => [mode.modeId, mode.name]));
@@ -510,7 +545,10 @@ async function buildVariableTokensByCollection(includeRoot: boolean): Promise<Re
   return variableGroups;
 }
 
-async function buildStyleTokensByCategory(includeRoot: boolean): Promise<Record<string, DtcgTree>> {
+async function buildStyleTokensByCategory(
+  includeRoot: boolean,
+  variablePaths: VariablePathIndex
+): Promise<Record<string, DtcgTree>> {
   const styleGroups: Record<string, DtcgTree> = {
     color: {},
     typography: {},
@@ -533,7 +571,7 @@ async function buildStyleTokensByCategory(includeRoot: boolean): Promise<Record<
     setToken(
       styleGroups.typography,
       styleTokenPath("typography", style.name, includeRoot),
-      convertTextToToken(style)
+      convertTextToToken(style, variablePaths)
     );
   }
 
@@ -571,9 +609,10 @@ function mergeTreeGroupMap(source: Record<string, DtcgTree>, target: Record<stri
 
 async function generateTokens(): Promise<GeneratedPayload> {
   const generatedAt = new Date().toISOString();
+  const variablePaths = await buildVariablePathIndex(includeCollectionOrCategoryRoot);
   const [variableGroups, styleGroups] = await Promise.all([
-    buildVariableTokensByCollection(includeCollectionOrCategoryRoot),
-    buildStyleTokensByCategory(includeCollectionOrCategoryRoot),
+    buildVariableTokensByCollection(includeCollectionOrCategoryRoot, variablePaths),
+    buildStyleTokensByCategory(includeCollectionOrCategoryRoot, variablePaths),
   ]);
 
   const allGroups: Record<string, DtcgTree> = {};
