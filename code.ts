@@ -187,17 +187,33 @@ function valueToReference(path: string): string {
   return `{${splitTokenPath(path).join(".")}}`;
 }
 
-function toFileSafeName(name: string): string {
+function toFileSafeName(name: string, fallback = "tokens"): string {
   const safe = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/-+/g, "-");
-  return safe.replace(/^-|-$/g, "") || "tokens";
+  return safe.replace(/^-|-$/g, "") || fallback;
+}
+
+// Sanitized names can collide ("Light"/"light", non-Latin names), so later files
+// get a numeric suffix instead of silently overwriting earlier ones in the zip.
+function makeFilenamesUnique(files: TokenFile[]): TokenFile[] {
+  const used = new Set<string>();
+  return files.map((file) => {
+    const base = file.filename.replace(/\.json$/, "");
+    let filename = file.filename;
+    for (let n = 2; used.has(filename); n += 1) {
+      filename = `${base}-${n}.json`;
+    }
+    used.add(filename);
+    return { ...file, filename };
+  });
 }
 
 async function getLocalCollections(): Promise<VariableCollection[]> {
   return figma.variables.getLocalVariableCollectionsAsync();
 }
 
-async function getVariableById(id: string): Promise<Variable | null> {
-  return figma.variables.getVariableByIdAsync(id);
+async function getLocalVariablesById(): Promise<Map<string, Variable>> {
+  const variables = await figma.variables.getLocalVariablesAsync();
+  return new Map(variables.map((variable) => [variable.id, variable]));
 }
 
 async function getPaintStyles(): Promise<PaintStyle[]> {
@@ -470,13 +486,16 @@ function styleTokenPath(category: string, styleName: string, includeRoot: boolea
   return includeRoot ? `${category}/${styleName}` : styleName;
 }
 
-async function buildVariablePathIndex(includeRoot: boolean): Promise<VariablePathIndex> {
+function buildVariablePathIndex(
+  collections: VariableCollection[],
+  variablesById: Map<string, Variable>,
+  includeRoot: boolean
+): VariablePathIndex {
   const pathByVariableId: VariablePathIndex = {};
 
-  const collections = await getLocalCollections();
   for (const collection of collections) {
     for (const variableId of collection.variableIds) {
-      const variable = await getVariableById(variableId);
+      const variable = variablesById.get(variableId);
       if (!variable) continue;
 
       pathByVariableId[variable.id] = variableTokenPath(
@@ -490,84 +509,165 @@ async function buildVariablePathIndex(includeRoot: boolean): Promise<VariablePat
   return pathByVariableId;
 }
 
-async function buildVariableTokensByCollection(
+type BundleMode = {
+  id: string;
+  name: string;
+  // Position in the collection's mode list, used to keep Figma's mode order.
+  index: number;
+  isDefault: boolean;
+};
+
+// A bundle is one output document: a group (collection or style category) at one
+// mode. `mode` is null when the source has no meaningful modes — style categories,
+// single-mode collections, and every collection in single-file output — which keeps
+// those files named `<group>.tokens.json`.
+type TokenBundle = {
+  group: string;
+  mode: BundleMode | null;
+  tree: DtcgTree;
+};
+
+function isVariableAliasValue(value: VariableValue | undefined): value is VariableAlias {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "type" in value &&
+    value.type === "VARIABLE_ALIAS"
+  );
+}
+
+function convertVariableModeValue(
+  rawValue: VariableValue,
+  variable: Variable,
+  pathByVariableId: VariablePathIndex
+): unknown {
+  const aliasSource = isVariableAliasValue(rawValue) ? pathByVariableId[rawValue.id] : undefined;
+  return convertVariableValue(rawValue, variable.resolvedType, aliasSource);
+}
+
+function variableExtensions(variable: Variable, collection: VariableCollection): Record<string, unknown> {
+  return {
+    figmaVariableId: variable.id,
+    figmaCollectionId: collection.id,
+    figmaScopes: variable.scopes,
+  };
+}
+
+// Single-file output: one tree per collection with the default mode as $value and
+// every mode under $extensions.mode, so references from other groups still resolve.
+function buildCombinedCollectionTree(
+  collection: VariableCollection,
+  variablesById: Map<string, Variable>,
   includeRoot: boolean,
   pathByVariableId: VariablePathIndex
-): Promise<Record<string, DtcgTree>> {
-  const variableGroups: Record<string, DtcgTree> = {};
+): DtcgTree {
+  const tree: DtcgTree = {};
+  const hasMultipleModes = collection.modes.length > 1;
 
-  const collections = await getLocalCollections();
-  for (const collection of collections) {
-    variableGroups[collection.name] = variableGroups[collection.name] ?? {};
-    const modeById = new Map(collection.modes.map((mode) => [mode.modeId, mode.name]));
-    const defaultModeId = collection.defaultModeId;
-    const hasMultipleModes = collection.modes.length > 1;
+  for (const variableId of collection.variableIds) {
+    const variable = variablesById.get(variableId);
+    if (!variable) continue;
 
-    for (const variableId of collection.variableIds) {
-      const variable = await getVariableById(variableId);
-      if (!variable) continue;
+    const defaultRawValue = variable.valuesByMode[collection.defaultModeId];
+    if (defaultRawValue === undefined) continue;
 
-      const tokenPath = variableTokenPath(collection.name, variable.name, includeRoot);
+    const extensions = variableExtensions(variable, collection);
+    if (hasMultipleModes) {
       const modeValues: Record<string, unknown> = {};
+      for (const mode of collection.modes) {
+        const rawValue = variable.valuesByMode[mode.modeId];
+        if (rawValue === undefined) continue;
 
-      for (const modeId of Object.keys(variable.valuesByMode)) {
-        const rawValue = variable.valuesByMode[modeId];
-        const modeName = modeById.get(modeId) ?? modeId;
-        const aliasSource =
-          typeof rawValue === "object" &&
-          rawValue !== null &&
-          "type" in rawValue &&
-          rawValue.type === "VARIABLE_ALIAS"
-            ? pathByVariableId[rawValue.id]
-            : undefined;
-
-        const converted = convertVariableValue(rawValue, variable.resolvedType, aliasSource);
-        if (
-          variable.resolvedType === "COLOR" &&
-          typeof rawValue === "object" &&
-          rawValue !== null &&
-          "r" in rawValue
-        ) {
+        if (variable.resolvedType === "COLOR" && typeof rawValue === "object" && "r" in rawValue) {
           const rgba = rawValue as RGBA;
-          modeValues[modeName] = colorToModeExtension(rgba, rgba.a);
+          modeValues[mode.name] = colorToModeExtension(rgba, rgba.a);
         } else {
-          modeValues[modeName] = converted;
+          modeValues[mode.name] = convertVariableModeValue(rawValue, variable, pathByVariableId);
         }
       }
-
-      const defaultRawValue = variable.valuesByMode[defaultModeId];
-      const defaultAliasSource =
-        typeof defaultRawValue === "object" &&
-        defaultRawValue !== null &&
-        "type" in defaultRawValue &&
-        defaultRawValue.type === "VARIABLE_ALIAS"
-          ? pathByVariableId[defaultRawValue.id]
-          : undefined;
-      const defaultValue = convertVariableValue(
-        defaultRawValue,
-        variable.resolvedType,
-        defaultAliasSource
-      );
-
-      const extensions: Record<string, unknown> = {
-        figmaVariableId: variable.id,
-        figmaCollectionId: collection.id,
-        figmaScopes: variable.scopes,
-      };
-      if (hasMultipleModes) {
-        extensions.mode = modeValues;
-      }
-
-      setToken(variableGroups[collection.name], tokenPath, {
-        $type: mapVariableTypeToDtcgType(variable.resolvedType),
-        $value: defaultValue,
-        $description: variable.description || undefined,
-        $extensions: extensions,
-      });
+      extensions.mode = modeValues;
     }
+
+    setToken(tree, variableTokenPath(collection.name, variable.name, includeRoot), {
+      $type: mapVariableTypeToDtcgType(variable.resolvedType),
+      $value: convertVariableModeValue(defaultRawValue, variable, pathByVariableId),
+      $description: variable.description || undefined,
+      $extensions: extensions,
+    });
   }
 
-  return variableGroups;
+  return tree;
+}
+
+// Split output: one tree per mode. Aliases stay plain path references — Figma
+// resolves a cross-collection alias with whatever mode the consumer picks for the
+// target collection, so pairing one mode file per collection reproduces that.
+function buildModeTrees(
+  collection: VariableCollection,
+  variablesById: Map<string, Variable>,
+  includeRoot: boolean,
+  pathByVariableId: VariablePathIndex
+): DtcgTree[] {
+  const trees: DtcgTree[] = collection.modes.map(() => ({}));
+
+  for (const variableId of collection.variableIds) {
+    const variable = variablesById.get(variableId);
+    if (!variable) continue;
+
+    const tokenPath = variableTokenPath(collection.name, variable.name, includeRoot);
+    collection.modes.forEach((mode, index) => {
+      const rawValue =
+        variable.valuesByMode[mode.modeId] ?? variable.valuesByMode[collection.defaultModeId];
+      if (rawValue === undefined) return;
+
+      setToken(trees[index], tokenPath, {
+        $type: mapVariableTypeToDtcgType(variable.resolvedType),
+        $value: convertVariableModeValue(rawValue, variable, pathByVariableId),
+        $description: variable.description || undefined,
+        $extensions: variableExtensions(variable, collection),
+      });
+    });
+  }
+
+  return trees;
+}
+
+function buildVariableBundles(
+  collections: VariableCollection[],
+  variablesById: Map<string, Variable>,
+  includeRoot: boolean,
+  pathByVariableId: VariablePathIndex,
+  splitModes: boolean
+): TokenBundle[] {
+  const bundles: TokenBundle[] = [];
+
+  for (const collection of collections) {
+    // Single-mode collections stay mode-less so their filenames don't change.
+    if (!splitModes || collection.modes.length <= 1) {
+      bundles.push({
+        group: collection.name,
+        mode: null,
+        tree: buildCombinedCollectionTree(collection, variablesById, includeRoot, pathByVariableId),
+      });
+      continue;
+    }
+
+    const trees = buildModeTrees(collection, variablesById, includeRoot, pathByVariableId);
+    collection.modes.forEach((mode, index) => {
+      bundles.push({
+        group: collection.name,
+        mode: {
+          id: mode.modeId,
+          name: mode.name,
+          index,
+          isDefault: mode.modeId === collection.defaultModeId,
+        },
+        tree: trees[index],
+      });
+    });
+  }
+
+  return bundles;
 }
 
 async function buildStyleTokensByCategory(
@@ -615,7 +715,23 @@ async function buildStyleTokensByCategory(
   return styleGroups;
 }
 
-function createDtcgPayload(tokens: DtcgTree, generatedAt: string) {
+async function buildStyleBundles(
+  includeRoot: boolean,
+  variablePaths: VariablePathIndex
+): Promise<TokenBundle[]> {
+  const styleGroups = await buildStyleTokensByCategory(includeRoot, variablePaths);
+  return Object.keys(styleGroups).map((group) => ({
+    group,
+    mode: null,
+    tree: styleGroups[group],
+  }));
+}
+
+function createDtcgPayload(
+  tokens: DtcgTree,
+  generatedAt: string,
+  mode?: { collection: string; mode: BundleMode }
+) {
   return {
     $schema: DTCG_SCHEMA_URL,
     $metadata: {
@@ -623,59 +739,115 @@ function createDtcgPayload(tokens: DtcgTree, generatedAt: string) {
       tokenFormatVersion: "2025.10",
       generator: "dtcg-tokens-figma-plugin",
       generatedAt,
+      ...(mode
+        ? {
+            collection: mode.collection,
+            mode: mode.mode.name,
+            modeId: mode.mode.id,
+            isDefaultMode: mode.mode.isDefault,
+          }
+        : {}),
     },
     ...tokens,
   };
 }
 
-function mergeTreeGroupMap(source: Record<string, DtcgTree>, target: Record<string, DtcgTree>): void {
-  for (const groupName of Object.keys(source)) {
-    target[groupName] = target[groupName]
-      ? mergeDtcgTrees(target[groupName], source[groupName])
-      : source[groupName];
+function bundleKey(bundle: TokenBundle): string {
+  // NUL separator: group and mode IDs cannot contain it.
+  return `${bundle.group}\u0000${bundle.mode?.id ?? ""}`;
+}
+
+// Bundles sharing a group *and* a mode are merged, so a style category and a
+// mode-less collection with the same name still land in one document.
+function mergeBundles(bundles: TokenBundle[]): TokenBundle[] {
+  const byKey = new Map<string, TokenBundle>();
+
+  for (const bundle of bundles) {
+    const key = bundleKey(bundle);
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.tree = mergeDtcgTrees(existing.tree, bundle.tree);
+    } else {
+      byKey.set(key, { group: bundle.group, mode: bundle.mode, tree: bundle.tree });
+    }
   }
+
+  // Groups are alphabetical; modes keep the collection's order (default first in Figma).
+  const merged = Array.from(byKey.values());
+  merged.sort((a, b) => {
+    if (a.group !== b.group) return a.group < b.group ? -1 : 1;
+    return (a.mode ? a.mode.index : -1) - (b.mode ? b.mode.index : -1);
+  });
+  return merged;
+}
+
+function bundleToFile(bundle: TokenBundle, generatedAt: string): TokenFile {
+  if (bundle.mode === null) {
+    return {
+      name: bundle.group,
+      filename: `${toFileSafeName(bundle.group)}.tokens.json`,
+      json: JSON.stringify(createDtcgPayload(bundle.tree, generatedAt), null, 2),
+    };
+  }
+
+  const modeFileName = toFileSafeName(bundle.mode.name, `mode-${bundle.mode.index + 1}`);
+  return {
+    name: `${bundle.group} / ${bundle.mode.name}`,
+    filename: `${toFileSafeName(bundle.group)}.${modeFileName}.json`,
+    json: JSON.stringify(
+      createDtcgPayload(bundle.tree, generatedAt, {
+        collection: bundle.group,
+        mode: bundle.mode,
+      }),
+      null,
+      2
+    ),
+  };
 }
 
 async function generateTokens(): Promise<GeneratedPayload> {
   const generatedAt = new Date().toISOString();
-  const variablePaths = await buildVariablePathIndex(includeCollectionOrCategoryRoot);
-  const [variableGroups, styleGroups] = await Promise.all([
-    buildVariableTokensByCollection(includeCollectionOrCategoryRoot, variablePaths),
-    buildStyleTokensByCategory(includeCollectionOrCategoryRoot, variablePaths),
+  const [collections, variablesById] = await Promise.all([
+    getLocalCollections(),
+    getLocalVariablesById(),
   ]);
+  const variablePaths = buildVariablePathIndex(
+    collections,
+    variablesById,
+    includeCollectionOrCategoryRoot
+  );
+  const variableBundles = buildVariableBundles(
+    collections,
+    variablesById,
+    includeCollectionOrCategoryRoot,
+    variablePaths,
+    splitByCollectionOrCategory
+  );
+  const styleBundles = await buildStyleBundles(includeCollectionOrCategoryRoot, variablePaths);
 
-  const allGroups: Record<string, DtcgTree> = {};
-  mergeTreeGroupMap(variableGroups, allGroups);
-  mergeTreeGroupMap(styleGroups, allGroups);
-  const availableGroups = Object.keys(allGroups).sort();
+  // Sorted by group, so the Set keeps groups in alphabetical order.
+  const bundles = mergeBundles([...variableBundles, ...styleBundles]);
+  const availableGroups = Array.from(new Set(bundles.map((bundle) => bundle.group)));
+
   const selectedGroupSet = new Set(enabledGroups === null ? availableGroups : enabledGroups);
   const selectedGroups = availableGroups.filter((groupName) => selectedGroupSet.has(groupName));
+  const selectedBundles = bundles.filter((bundle) => selectedGroupSet.has(bundle.group));
+
+  const settings = { language, singleFileName };
 
   if (splitByCollectionOrCategory) {
-    const files: TokenFile[] = [];
-    for (const groupName of selectedGroups) {
-      files.push({
-        name: groupName,
-        filename: `${toFileSafeName(groupName)}.tokens.json`,
-        json: JSON.stringify(createDtcgPayload(allGroups[groupName], generatedAt), null, 2),
-      });
-    }
-
     return {
       mode: "split",
-      files,
+      files: makeFilenamesUnique(selectedBundles.map((bundle) => bundleToFile(bundle, generatedAt))),
       availableGroups,
       selectedGroups,
-      settings: {
-        language,
-        singleFileName,
-      },
+      settings,
     };
   }
 
   let mergedTokens: DtcgTree = {};
-  for (const groupName of selectedGroups) {
-    mergedTokens = mergeDtcgTrees(mergedTokens, allGroups[groupName]);
+  for (const bundle of selectedBundles) {
+    mergedTokens = mergeDtcgTrees(mergedTokens, bundle.tree);
   }
 
   return {
@@ -687,10 +859,7 @@ async function generateTokens(): Promise<GeneratedPayload> {
     },
     availableGroups,
     selectedGroups,
-    settings: {
-      language,
-      singleFileName,
-    },
+    settings,
   };
 }
 
@@ -702,9 +871,12 @@ async function sendTokensToUi(): Promise<void> {
       payload,
     });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const prefix = language === "pt" ? "Falha ao exportar tokens" : "Token export failed";
+    figma.notify(`${prefix}: ${message}`, { error: true });
     figma.ui.postMessage({
       type: "tokens-error",
-      error: error instanceof Error ? error.message : String(error),
+      error: message,
     });
   }
 }
